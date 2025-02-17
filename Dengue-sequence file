@@ -1,0 +1,70 @@
+from Bio import Entrez
+
+# Set the email to be used with Entrez
+Entrez.email = "tuq33671@temple.edu"
+
+def search_entrez(db, term, retmax=1):
+    """Search Entrez database and return the search record."""
+    search_handle = Entrez.esearch(db=db, term=term, retmax=retmax)
+    search_record = Entrez.read(search_handle)
+    search_handle.close()
+    return search_record
+
+def fetch_entrez(db, ids, rettype="gb", retmode="xml"):
+    """Fetch data from Entrez and return only the needed metadata (no sequence data)."""
+    fetch_handle = Entrez.efetch(db=db, id=ids, rettype=rettype, retmode=retmode)
+    data = Entrez.read(fetch_handle)  # Return parsed XML
+    fetch_handle.close()
+    return data
+
+# QUESTION 4: Search GenBank for all Dengue Virus sequences
+search_record_all = search_entrez("nucleotide", "Dengue Virus[Organism]", retmax=1000)
+# Fetch the sequence metadata in XML format
+records = fetch_entrez("nucleotide", search_record_all["IdList"], rettype="gb", retmode="xml")
+
+# Process the sequences (full and partial genomes)
+full_genomes_count = 0
+partial_genomes_info = []
+
+for record in records:
+    definition = record.get("GBSeq_definition", "").lower()
+    print(f"\nDefinition: {definition}")
+    print(f"Accession: {record['GBSeq_accession-version']}")  # Accession number
+
+    # If it's a full genome (complete genome in the definition)
+    if 'complete genome' in definition:
+        full_genomes_count += 1
+    else:
+        print(f"Identified as a potential partial genome: {definition}")
+        
+        products, genes = [], []
+        feature_table = record.get("GBSeq_feature-table", [])
+        
+        # Extract product and gene information from features
+        for feature in feature_table:
+            for qualifier in feature.get("GBFeature_quals", []):
+                if qualifier.get("GBQualifier_name") == "product":
+                    products.append(qualifier.get("GBQualifier_value", "Unknown Product"))
+                if qualifier.get("GBQualifier_name") == "gene":
+                    genes.append(qualifier.get("GBQualifier_value", "Unknown Gene"))
+        
+        if products or genes:
+            partial_genomes_info.append({
+                "accession": record["GBSeq_accession-version"],
+                "products": products,
+                "genes": genes
+            })
+
+# Output the results
+print(f"\nTotal full genome sequences for 'Dengue Virus': {full_genomes_count}")
+print(f"Total partial genome sequences for 'Dengue Virus': {len(partial_genomes_info)}\n")
+
+if partial_genomes_info:
+    print("Partial genome sequences with product and gene information:")
+    for info in partial_genomes_info:
+        # Combine product and gene information as "product, gene"
+        product_gene_pairs = [f"{prod}, {gene}" for prod, gene in zip(info['products'], info['genes'])]
+        for pair in product_gene_pairs:
+            print(f"Accession: {info['accession']} - {pair}")
+else:
+    print("No partial genome sequences found.")
